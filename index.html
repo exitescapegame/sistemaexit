@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EXIT ERP - Supabase</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { font-family: Arial; margin: 20px; }
+  .card { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+  button { padding: 8px 16px; margin: 5px; cursor: pointer; }
+  input, select { margin: 5px 0; padding: 6px; width: 200px; }
+</style>
+</head>
+<body>
+<h1>EXIT GAMES - ERP</h1>
+<div id="loginArea">
+  <h3>Login</h3>
+  <select id="usuario"></select><br>
+  <input type="password" id="pin" placeholder="PIN"><br>
+  <button onclick="fazerLogin()">Entrar</button>
+  <div id="loginMsg"></div>
+</div>
+<div id="app" style="display:none">
+  <h2>Bem-vindo, <span id="nomeUsuario"></span></h2>
+  <button onclick="carregarUnidadesESalas()">Carregar Unidades e Salas</button>
+  <div id="unidades"></div>
+  <div id="salas"></div>
+  <h3>Vendas</h3>
+  <button onclick="novaVenda()">Nova Venda</button>
+  <div id="vendasLista"></div>
+</div>
+<script>
+  const SUPABASE_URL = 'https://tbrgfwresuwumzrgtfyr.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRicmdmd3Jlc3V3dW16cmd0ZnlyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MjU0NDEsImV4cCI6MjA5NTIwMTQ0MX0.26eqf9AZuVot2OvQAdOE8erfkN1KoITzTvxbDcsFiGM';
+  const supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_KEY);
+  let usuarioAtual = null;
+  async function carregarColaboradores() {
+    const { data, error } = await supabase.from('colaboradores').select('*');
+    if (error) { console.error(error); return; }
+    const select = document.getElementById('usuario');
+    select.innerHTML = '';
+    data.forEach(u => {
+      const option = document.createElement('option');
+      option.value = u.id;
+      option.textContent = u.nome;
+      select.appendChild(option);
+    });
+  }
+  async function fazerLogin() {
+    const userId = document.getElementById('usuario').value;
+    const pin = document.getElementById('pin').value;
+    const { data, error } = await supabase.from('colaboradores').select('*').eq('id', userId).single();
+    if (error || !data) { document.getElementById('loginMsg').innerHTML = 'Usuário não encontrado'; return; }
+    function hp(pin) { let h = 0x811c9dc5; for (let i = 0; i < pin.length; i++) { h ^= pin.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return 'fb:' + h.toString(16); }
+    if (hp(pin) !== data.pin_hash) { document.getElementById('loginMsg').innerHTML = 'PIN incorreto'; return; }
+    usuarioAtual = data;
+    document.getElementById('loginArea').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('nomeUsuario').innerText = data.nome;
+    carregarUnidadesESalas();
+    carregarVendas();
+  }
+  async function carregarUnidadesESalas() {
+    const { data: uData, error: uErr } = await supabase.from('unidades').select('*');
+    if (uErr) { alert('Erro unidades: ' + uErr.message); return; }
+    const { data: sData, error: sErr } = await supabase.from('salas').select('*');
+    if (sErr) { alert('Erro salas: ' + sErr.message); return; }
+    const divUni = document.getElementById('unidades');
+    divUni.innerHTML = '<h3>Unidades</h3>';
+    uData.forEach(u => divUni.innerHTML += `<div class="card">${u.nome} - ${u.endereco}</div>`);
+    const divSalas = document.getElementById('salas');
+    divSalas.innerHTML = '<h3>Salas</h3>';
+    sData.forEach(s => divSalas.innerHTML += `<div class="card">${s.emoji} ${s.nome} - ${s.dificuldade}</div>`);
+  }
+  async function carregarVendas() {
+    const { data, error } = await supabase.from('vendas').select('*').order('criado_em', { ascending: false });
+    if (error) { console.error(error); return; }
+    const div = document.getElementById('vendasLista');
+    div.innerHTML = '<h3>Últimas vendas</h3>';
+    data.slice(0, 10).forEach(v => div.innerHTML += `<div class="card">R$ ${v.valor_total} - ${v.canal} - ${new Date(v.criado_em).toLocaleString()}</div>`);
+  }
+  async function novaVenda() {
+    const valor = prompt('Valor da venda (R$)');
+    if (!valor) return;
+    const canal = prompt('Canal') || 'PDV';
+    const venda = { id: Date.now().toString(), data: new Date().toISOString().split('T')[0], unidade_id: usuarioAtual.unidade_id, valor_total: parseFloat(valor), canal: canal, status: 'confirmado', vendido_por: usuarioAtual.id, criado_em: new Date().toISOString() };
+    const { error } = await supabase.from('vendas').insert(venda);
+    if (error) { alert('Erro: ' + error.message); return; }
+    alert('Venda registrada!');
+    carregarVendas();
+  }
+  window.onload = carregarColaboradores;
+</script>
+</body>
+</html>
